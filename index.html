@@ -919,26 +919,42 @@ function zoomDayMap(el, zInc){
   el.setAttribute('data-z', nz);
   el.querySelector('.dmap-inner').innerHTML = dayMapHTML(ids, d.color, nz);
   /* 重新生成瓦片后清除旧的平移，避免旧坐标把新地图整体拖出视口。 */
-  var mapScale = zInc === 0 ? 1 : Math.min(2.4, 1 + Math.max(0, nz - prep.z) * .28);
+  var mapScale = zInc === 0 ? 1 : Math.min(3.2, 1 + Math.max(0, nz - prep.z) * .28);
   el.querySelector('.dmap-inner').style.transform = 'translate3d(0,0,0) scale(' + mapScale + ')';
-  el._mapTx = 0; el._mapTy = 0;
+  el._mapTx = 0; el._mapTy = 0; el._mapScale = mapScale; el._mapTileZ = nz;
   var btnR = el.querySelector('.z-reset');
   if(btnR) btnR.style.display = (nz === prep.z) ? 'none' : 'block';
+}
+function setMapScale(map, scale){
+  scale=Math.max(1,Math.min(4,scale));
+  var idx=parseInt(map.getAttribute('data-day'),10), d=DAYS[idx];
+  if(!d) return;
+  var ids=dayStopIds(d), prep=prepMapPts(ids,null), base=prep.z;
+  var tileZ=Math.max(10,Math.min(18,Math.round(base + Math.log(scale)/Math.LN2)));
+  var inner=map.querySelector('.dmap-inner');
+  if(tileZ !== (map._mapTileZ||base)){
+    map.setAttribute('data-z',tileZ);
+    if(inner) inner.innerHTML=dayMapHTML(ids,d.color,tileZ);
+    map._mapTileZ=tileZ;
+  }
+  var residual=scale / Math.pow(2,tileZ-base);
+  residual=Math.max(.82,Math.min(1.42,residual));
+  map._mapScale=scale;
+  if(inner) inner.style.transform='translate3d('+(map._mapTx||0)+'px,'+(map._mapTy||0)+'px,0) scale('+residual+')';
+  var btnR=map.querySelector('.z-reset'); if(btnR) btnR.style.display=scale<=1.01?'none':'block';
 }
 /* 手机地图手势：单指拖动、双指捏合；按钮缩放仍可用 */
 function bindMapGestures(){
   document.querySelectorAll('.dmap').forEach(function(map){
     if(map.getAttribute('data-gestures')) return;
     map.setAttribute('data-gestures','1');
-    var startX=0,startY=0,baseX=0,baseY=0,tx=0,ty=0,drag=false,moved=false,pinch=0;
+    var startX=0,startY=0,baseX=0,baseY=0,tx=0,ty=0,drag=false,moved=false;
+    var activePointers={}, pinchStart=0, pinchScale=1;
+    map._mapScale = 1;
     function clamp(v, max){ return Math.max(-max, Math.min(max, v)); }
     function apply(nx,ny){
       /* 地图内容与容器同尺寸，平移过远会露出整片白底；限制在可视边界内。 */
-      var inner=map.querySelector('.dmap-inner'), scale=1, tr=inner && getComputedStyle(inner).transform;
-      if(tr && tr !== 'none'){
-        var mm=tr.match(/^matrix\(([^)]+)\)$/);
-        if(mm){ var parts=mm[1].split(','); scale=parseFloat(parts[0]) || 1; }
-      }
+      var inner=map.querySelector('.dmap-inner'), scale=map._mapScale||1;
       var maxX=Math.max(0, map.clientWidth*(scale-1)/2), maxY=Math.max(0, map.clientHeight*(scale-1)/2);
       tx=clamp(nx,maxX); ty=clamp(ny,maxY);
       map._mapTx=tx; map._mapTy=ty;
@@ -961,30 +977,43 @@ function bindMapGestures(){
       if(e && e.pointerId!=null && map.releasePointerCapture){ try{map.releasePointerCapture(e.pointerId);}catch(_){ } }
     }
     map.addEventListener('pointerdown',function(e){
+      activePointers[e.pointerId]={x:e.clientX,y:e.clientY};
+      var pids=Object.keys(activePointers);
+      if(pids.length===2){
+        var a=activePointers[pids[0]], b=activePointers[pids[1]];
+        pinchStart=Math.hypot(a.x-b.x,a.y-b.y); pinchScale=map._mapScale||1; drag=false; moved=true;
+        return;
+      }
       map.setPointerCapture && map.setPointerCapture(e.pointerId);
       if(e.isPrimary) begin(e.clientX,e.clientY,e);
     });
     map.addEventListener('pointermove',function(e){
+      if(activePointers[e.pointerId]) activePointers[e.pointerId]={x:e.clientX,y:e.clientY};
+      var pids=Object.keys(activePointers);
+      if(pids.length===2 && pinchStart){
+        var a=activePointers[pids[0]], b=activePointers[pids[1]], dist=Math.hypot(a.x-b.x,a.y-b.y);
+        setMapScale(map,Math.max(1,Math.min(4,pinchScale*(dist/pinchStart))));
+        apply(map._mapTx||0,map._mapTy||0); e.preventDefault(); return;
+      }
       if(!drag || !e.isPrimary) return;
       move(e.clientX,e.clientY,e);
     });
-    map.addEventListener('pointerup',end);
-    map.addEventListener('pointercancel',end);
-    /* Safari/桌面浏览器兜底：部分环境不会把 file 页面上的拖动完整派发为 PointerEvent。 */
-    map.addEventListener('mousedown',function(e){ if(e.button===0) begin(e.clientX,e.clientY,e); });
-    map.addEventListener('mousemove',function(e){ move(e.clientX,e.clientY,e); });
-    map.addEventListener('mouseup',end);
-    map.addEventListener('mouseleave',function(e){ if(drag) end(e); });
+    map.addEventListener('pointerup',function(e){ delete activePointers[e.pointerId]; if(Object.keys(activePointers).length<2) pinchStart=0; end(e); });
+    map.addEventListener('pointercancel',function(e){ delete activePointers[e.pointerId]; pinchStart=0; end(e); });
+    /* 仅在不支持 PointerEvent 的老环境启用鼠标兜底，避免同一次拖动被处理两遍而卡住。 */
+    if(!window.PointerEvent){
+      map.addEventListener('mousedown',function(e){ if(e.button===0) begin(e.clientX,e.clientY,e); });
+      map.addEventListener('mousemove',function(e){ move(e.clientX,e.clientY,e); });
+      map.addEventListener('mouseup',end);
+      map.addEventListener('mouseleave',function(e){ if(drag) end(e); });
+    }
     map.addEventListener('dragstart',function(e){ e.preventDefault(); });
     map.addEventListener('click',function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } });
-    map.addEventListener('wheel',function(e){ e.preventDefault(); zoomDayMap(map,e.deltaY<0?1:-1); },{passive:false});
-    map.addEventListener('touchstart',function(e){
-      if(e.touches.length===2){ pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); baseScale=1; }
-    },{passive:true});
-    map.addEventListener('touchmove',function(e){
-      if(e.touches.length===2 && pinch){ var now=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); if(Math.abs(now-pinch)>18){ zoomDayMap(map,now>pinch?1:-1); pinch=now; } }
-    },{passive:true});
-    map.addEventListener('touchend',function(){ pinch=0; });
+    map.addEventListener('wheel',function(e){
+      e.preventDefault();
+      var next=Math.max(1,Math.min(4,(map._mapScale||1) * Math.pow(1.0015,-e.deltaY)));
+      setMapScale(map,next); apply(map._mapTx||0,map._mapTy||0);
+    },{passive:false});
   });
 }
 function drawAll(){
