@@ -174,8 +174,8 @@ html{scroll-behavior:smooth}
 /* ---- 每日在线缩略地图（高德/OSM 瓦片拼接，可缩放） ---- */
 .dmap{position:relative;display:block;width:100%;aspect-ratio:3/2;overflow:hidden;border-radius:10px;
   border:1px solid var(--line);background:var(--card2);margin:0 0 4px;touch-action:manipulation}
-.dmap-inner{position:absolute;inset:0}
-.dmap .timg{position:absolute;display:block;object-fit:cover}
+.dmap-inner{position:absolute;left:50%;top:50%;width:1024px;height:768px;margin:-384px 0 0 -512px;overflow:visible;transform-origin:50% 50%;background:var(--card2)}
+.dmap .timg{position:absolute;display:block;object-fit:fill;user-select:none;-webkit-user-drag:none}
 .dmap svg{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
 .dmap .dot{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;
   border:2px solid #fff;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.28),0 1px 3px rgba(0,0,0,.35);pointer-events:none}
@@ -763,7 +763,8 @@ var TILE_CN     = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=
 var TILE_INTL_L = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png';
 var TILE_INTL_D = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png';
 var TSUBS_CN = ['1', '2', '3', '4'], TSUBS_INTL = ['a', 'b', 'c', 'd'];
-var TSIZE = 256, MCOLS = 3, MROWS = 2;
+/* 比视口更大的瓦片画布，缩放后仍有足够空间平移查看底图。 */
+var TSIZE = 256, MCOLS = 4, MROWS = 3;
 function isDarkTheme(){
   var a = document.documentElement.getAttribute('data-theme');
   if(a) return a === 'dark';
@@ -879,17 +880,17 @@ function dayMapHTML(ids, color, z){
       X = x0 + cx; Y = y0 + cy;
       if(Y < 0 || Y >= maxT) continue;
       XW = ((X % maxT) + maxT) % maxT;
-      h += '<img class="timg" alt="" loading="lazy" decoding="async" onerror="this.style.display=&#39;none&#39;" src="' +
+      h += '<img class="timg" alt="" loading="eager" decoding="async" draggable="false" onerror="this.style.display=&#39;none&#39;" src="' +
            base.replace('{s}', subs[(cx + cy) % 4]).replace('{z}', z).replace('{x}', XW).replace('{y}', Y) +
-           '" style="left:' + (cx/MCOLS*100) + '%;top:' + (cy/MROWS*100) +
-           '%;width:' + (100/MCOLS) + '%;height:' + (100/MROWS) + '%">';
+           '" style="left:' + (cx*TSIZE) + 'px;top:' + (cy*TSIZE) +
+           'px;width:' + TSIZE + 'px;height:' + TSIZE + 'px">';
     }
   }
   var VW = MCOLS*TSIZE, VH = MROWS*TSIZE, dpath = '', dots = '';
   for(i=0;i<pts.length;i++){
     dpath += (i === 0 ? 'M' : 'L') + ((pts[i].x-x0)*TSIZE).toFixed(1) + ' ' + ((pts[i].y-y0)*TSIZE).toFixed(1) + ' ';
     dots += '<span class="dot' + (i === 0 ? ' start' : '') + '" style="background:' + color +
-            ';left:' + ((pts[i].x-x0)/MCOLS*100).toFixed(2) + '%;top:' + ((pts[i].y-y0)/MROWS*100).toFixed(2) + '%"></span>';
+            ';left:' + ((pts[i].x-x0)*TSIZE).toFixed(1) + 'px;top:' + ((pts[i].y-y0)*TSIZE).toFixed(1) + 'px"></span>';
   }
   var svg = '';
   if(pts.length > 1){
@@ -918,10 +919,14 @@ function zoomDayMap(el, zInc){
   if(nz < 10) nz = 10; if(nz > 18) nz = 18;
   el.setAttribute('data-z', nz);
   el.querySelector('.dmap-inner').innerHTML = dayMapHTML(ids, d.color, nz);
-  /* 重新生成瓦片后清除旧的平移，避免旧坐标把新地图整体拖出视口。 */
-  var mapScale = zInc === 0 ? 1 : Math.min(3.2, 1 + Math.max(0, nz - prep.z) * .28);
-  el.querySelector('.dmap-inner').style.transform = 'translate3d(0,0,0) scale(' + mapScale + ')';
-  el._mapTx = 0; el._mapTy = 0; el._mapScale = mapScale; el._mapTileZ = nz;
+  /* 重新生成瓦片后清除旧的平移，避免旧坐标把新地图整体拖出视口。
+     关键点：按钮缩放只提升瓦片 zoom，不再 CSS 放大整张底图；
+     否则道路文字会被二次插值，出现“无脑放大、发糊”的效果。 */
+  el.querySelector('.dmap-inner').style.transform = 'translate3d(0,0,0) scale(1)';
+  el._mapTx = 0; el._mapTy = 0;
+  /* 记录逻辑缩放级别，供滚轮／双指继续从当前瓦片级别计算。 */
+  el._mapScale = Math.pow(2, nz - prep.z);
+  el._mapTileZ = nz;
   var btnR = el.querySelector('.z-reset');
   if(btnR) btnR.style.display = (nz === prep.z) ? 'none' : 'block';
 }
@@ -938,7 +943,7 @@ function setMapScale(map, scale){
     map._mapTileZ=tileZ;
   }
   var residual=scale / Math.pow(2,tileZ-base);
-  residual=Math.max(.82,Math.min(1.42,residual));
+  residual=Math.max(.5,Math.min(2,residual));
   map._mapScale=scale;
   if(inner) inner.style.transform='translate3d('+(map._mapTx||0)+'px,'+(map._mapTy||0)+'px,0) scale('+residual+')';
   var btnR=map.querySelector('.z-reset'); if(btnR) btnR.style.display=scale<=1.01?'none':'block';
@@ -954,8 +959,11 @@ function bindMapGestures(){
     function clamp(v, max){ return Math.max(-max, Math.min(max, v)); }
     function apply(nx,ny){
       /* 地图内容与容器同尺寸，平移过远会露出整片白底；限制在可视边界内。 */
-      var inner=map.querySelector('.dmap-inner'), scale=map._mapScale||1;
-      var maxX=Math.max(0, map.clientWidth*(scale-1)/2), maxY=Math.max(0, map.clientHeight*(scale-1)/2);
+      var inner=map.querySelector('.dmap-inner'), scale=1, tr=inner && getComputedStyle(inner).transform;
+      if(tr && tr !== 'none'){ var tm=tr.match(/^matrix\(([^)]+)\)$/); if(tm) scale=parseFloat(tm[1].split(',')[0])||1; }
+      var contentW=(inner ? inner.offsetWidth : map.clientWidth)*scale;
+      var contentH=(inner ? inner.offsetHeight : map.clientHeight)*scale;
+      var maxX=Math.max(0, (contentW-map.clientWidth)/2), maxY=Math.max(0, (contentH-map.clientHeight)/2);
       tx=clamp(nx,maxX); ty=clamp(ny,maxY);
       map._mapTx=tx; map._mapTy=ty;
       if(inner) inner.style.transform='translate3d('+tx+'px,'+ty+'px,0) scale('+scale+')';
@@ -1008,7 +1016,28 @@ function bindMapGestures(){
       map.addEventListener('mouseleave',function(e){ if(drag) end(e); });
     }
     map.addEventListener('dragstart',function(e){ e.preventDefault(); });
-    map.addEventListener('click',function(e){ if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; } });
+    map.addEventListener('click',function(e){
+      /* 拖拽／捏合结束时，浏览器随后发出的 click 不能当作导航。 */
+      if(moved){ e.preventDefault(); e.stopPropagation(); moved=false; return; }
+      /* 控件自己处理缩放，地图本体点击才打开当天全程路线。 */
+      if(e.target && e.target.closest && e.target.closest('.zctl')) return;
+      var route = map.getAttribute('data-route');
+      if(route){ e.preventDefault(); window.open(route, '_blank', 'noopener'); }
+    });
+    map.addEventListener('keydown',function(e){
+      if(e.key !== 'Enter' && e.key !== ' ') return;
+      if(e.target && e.target.closest && e.target.closest('.zctl')) return;
+      var route = map.getAttribute('data-route');
+      if(route){ e.preventDefault(); window.open(route, '_blank', 'noopener'); }
+    });
+    /* 缩放按钮独立于地图导航，避免 Safari 把按钮点击误激活为导航。 */
+    map.querySelectorAll('.zctl button').forEach(function(btn){
+      btn.addEventListener('pointerdown',function(e){ e.preventDefault(); e.stopPropagation(); });
+      btn.addEventListener('click',function(e){
+        e.preventDefault(); e.stopPropagation();
+        zoomDayMap(map,btn.classList.contains('z-in') ? 1 : (btn.classList.contains('z-out') ? -1 : 0));
+      });
+    });
     map.addEventListener('wheel',function(e){
       e.preventDefault();
       var next=Math.max(1,Math.min(4,(map._mapScale||1) * Math.pow(1.0015,-e.deltaY)));
@@ -1105,8 +1134,8 @@ function renderDays(){
                  '<button type="button" class="z-out" data-day="' + i + '" aria-label="缩小地图">−</button>' +
                  '<button type="button" class="z-reset" data-day="' + i + '" aria-label="复位地图">复位</button></div>';
     if(hasRoute){
-      h += '<a class="dmap ' + MAP_GEO + '" data-day="' + i + '" data-z="" target="_blank" rel="noopener" href="' + amapMulti(stopIds, navMode) +
-           '" aria-label="' + d.d + ' 路线缩略图，点击用高德打开">' + mapInner + mapCtl + '</a>';
+      h += '<div class="dmap ' + MAP_GEO + '" data-day="' + i + '" data-z="" data-route="' + amapMulti(stopIds, navMode) +
+           '" role="link" tabindex="0" aria-label="' + d.d + ' 路线缩略图，点击用高德打开">' + mapInner + mapCtl + '</div>';
       h += '<a class="stoplink" href="' + amapMulti(stopIds, navMode) + '">在高德 App 打开全程路线' +
            (stopIds.length - 2 > 0 ? '（含 ' + (stopIds.length - 2) + ' 个途经点）' : '') + '</a>';
     } else {
