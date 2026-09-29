@@ -304,6 +304,19 @@ body{-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
 @supports not (background:color-mix(in srgb,white 50%,black)){.focus{background:var(--card2)}}
 details.m p{margin:6px 0 0}
 
+/* 本地确认版：整体阅读字号恢复至约 1.1 倍；航班信息单独强化 */
+body{font-size:15.4px}
+.hero-meta{font-size:11px}.hero-sub{font-size:14.3px}.hero-title{font-size:28px}
+h2{font-size:17.5px}.status .pill{font-size:12px}.focus .flabel{font-size:11px}.focus .fname{font-size:17.5px}.focus .ftime{font-size:12px}
+.cd .u b{font-size:26px}.cd .u span{font-size:10px}.locnow{font-size:11px}
+.legend,.rowh b,.tag,.topcard-t,.goto,.stoplink,.alt-title{font-size:12px}
+.dayhead .ttl{font-size:16.5px}.dayhead .route{font-size:12px}.tl .t{font-size:12px}.tl .c b{font-size:14.5px}.tl .c .note{font-size:12px}
+.alt-top .loc{font-size:13px}.alt-score{font-size:11px}.alt-intro{font-size:12px}.alt-dp{font-size:12px}
+.kv{font-size:14.3px}.kv dt{font-size:12px}.rv{font-size:13.2px}.sub{font-size:12.7px}
+ul.todo li{font-size:14.3px}ul.todo li small{font-size:12px}.todo-hint{font-size:13.2px}
+ul.tips li{font-size:14.3px}.foot{font-size:11.6px}details.m{font-size:13.2px}details.m summary{font-size:12.7px}
+.flight-row{padding:13px 0 0;margin-top:13px}.flight-row .rowh b{font-size:16px;padding:4px 9px;font-weight:800}.flight-row .rv{font-size:19px;font-weight:800;line-height:1.35;letter-spacing:-.015em}.flight-row .sub{font-size:13px}
+
 @media (max-width:480px){
   .wrap{padding-left:12px;padding-right:12px}
   .card{padding:14px}
@@ -330,6 +343,20 @@ details.m p{margin:6px 0 0}
   .dayhead .ttl{font-size:14px}
   .dayhead .route{font-size:10.5px}
 }
+
+/* 最终本地预览字号覆盖：统一约 1.1 倍 */
+body{font-size:15.4px}
+.hero-meta{font-size:11px}.hero-sub{font-size:14.3px}.hero-title{font-size:28px}
+h2{font-size:17.5px}.status .pill{font-size:12px}.focus .flabel{font-size:11px}.focus .fname{font-size:17.5px}.focus .ftime{font-size:12px}
+.cd .u b{font-size:26px}.cd .u span{font-size:10px}.locnow{font-size:11px}
+.legend,.rowh b,.tag,.topcard-t,.goto,.stoplink,.alt-title{font-size:12px}
+.dayhead .ttl{font-size:16.5px}.dayhead .route{font-size:12px}.tl .t{font-size:12px}.tl .c b{font-size:14.5px}.tl .c .note{font-size:12px}
+.alt-top .loc{font-size:13px}.alt-score{font-size:11px}.alt-intro{font-size:12px}.alt-dp{font-size:12px}
+.kv{font-size:14.3px}.kv dt{font-size:12px}.rv{font-size:13.2px}.sub{font-size:12.7px}
+ul.todo li{font-size:14.3px}ul.todo li small{font-size:12px}.todo-hint{font-size:13.2px}
+ul.tips li{font-size:14.3px}.foot{font-size:11.6px}details.m{font-size:13.2px}details.m summary{font-size:12.7px}
+.flight-row{padding:13px 0 0;margin-top:13px}.flight-row .rowh b{font-size:16px;padding:4px 9px;font-weight:800}.flight-row .rv{font-size:19px;font-weight:800;line-height:1.35;letter-spacing:-.015em}.flight-row .sub{font-size:13px}
+@media (max-width:360px){body{font-size:14px}.hero-title{font-size:20px}.cd .u b{font-size:20px}.dayhead .ttl{font-size:14px}.dayhead .route{font-size:10.5px}}
 </style>
 </head>
 <body data-page-node-id="q52TqCjbUVGw5DjKDr2jj1">
@@ -967,7 +994,7 @@ function renderConfirmed(){
   var i, h = '';
   for(i=0;i<CONFIRMED.length;i++){
     var c = CONFIRMED[i];
-    h += '<div class="row' + (c.cls === 'todo' ? ' pending' : '') + '"><div class="rowh"><b>' + esc(c.k || '') + '</b><span class="tag ' + esc(c.cls || '') + '">' + esc(c.s || '') + '</span></div>' +
+    h += '<div class="row' + (c.cls === 'todo' ? ' pending' : '') + (c.k === '去程' || c.k === '返程' ? ' flight-row' : '') + '"><div class="rowh"><b>' + esc(c.k || '') + '</b><span class="tag ' + esc(c.cls || '') + '">' + esc(c.s || '') + '</span></div>' +
          '<div class="rv">' + esc(c.v || '') + '</div>';
     if(c.addr){
       var tel = c.tel ? (' · <a class="tel" href="tel:' + c.tel.replace(/[^0-9+]/g,'') + '">' + esc(c.tel) + '</a>') : '';
